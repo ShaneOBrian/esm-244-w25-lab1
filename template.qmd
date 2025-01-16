@@ -1,6 +1,9 @@
 ---
-title: "Template"
-format: html
+title: "Lab 1 Workup"
+format: 
+  html:
+      code-fold: true
+      toc: true
 execute:
   eval: false
 ---
@@ -9,7 +12,7 @@ execute:
 
 You may need to install these packages
 
-```{r}
+```{r, install pacakages, include = F}
 library(tidyverse)
 library(sf)
 library(here)
@@ -20,24 +23,21 @@ library(tmap)
 What do we need to change to get the data to load in the following chunk?
 
 ```{r}
-sfo_trees_df<-read_csv(here("data","trees")) |> janitor::clean_names()
+sfo_trees_df<-read_csv(here("data/sfo_trees","sfo_trees.csv")) |>
+janitor::clean_names()
 ```
 
 ## Part 1: Data exploration
 
 Look at `sfo_trees_df` dataframe. How many observations are there? What does the data include? Use the console to explore the data.
+197,618 observations of 12 variables
 
 What are some interesting questions you could ask about the data?
 
 Write them below:
-
-
-
-
-
-
-
-
+Is there any relationship between legal status and caretaker, e.g., does having a private owner confer a different legal status?
+Are plot size and tree species related?
+Does species composition change with lat and long?
 
 ### Example 2
 
@@ -45,11 +45,38 @@ Describe what this piece of code does. Feel free to run it to help you understan
 
 ```{r}
 permitted_mta_dpw<-sfo_trees_df |> 
-  filter(legal_status == 'Permitted Site' & %in% c("MTA","DPW"))
+  filter(legal_status == "Permitted Site", caretaker %in% c("MTA","DPW"))
+```
+
+Makes a new data frame called permitted_mta_dpw from the sfo_trees_df that consists of only the rows in sfo_trees_dfwhere legal_status is 'Permitted Site" and of those sites, caretaker is either MTA or DPW.
+
+What does the `%in%` do? Write an example to explain the `%in%` operator to your neighbor using the empty code chunk below
+
+```{r}
+permitted_<-sfo_trees_df |> 
+  filter(legal_status == "Permitted Site", caretaker %in% c("CAN","City College"))
 ```
 
 
-What does the `%in%` do? Write an example to explain the `%in%` operator to your neighbor using the empty code chunk below
+```{r, counting the number of observations for each unique legal_status identifier, slice_max works by the thing we want (tree_count) and gives up the n =, which is 5 }
+top_five <- sfo_trees_df |> 
+  group_by(legal_status) |>
+  summarize(tree_count=n()) |> 
+  slice_max(tree_count, n=5)
+```
+
+```{r}
+legal_tree <- ggplot(top_five, aes(x = fct_reorder(legal_status, tree_count), y = tree_count)) +
+#fct_reorder is ordering the 
+  geom_col()+
+  labs(x = "Legal status", y = "Tree observations")+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+# axis tests 
+legal_tree
+```
+
+
 
 ```{r}
 
@@ -62,26 +89,23 @@ Our boss tasked us with identifying oak and pine trees in SF based on legal stat
 
 Write pseudocode on how you would solve it
 
-
-
-
-
-
-
+I would filter by species anything that includes oak or pine in the observation. 
 
 Data wrangle done below:
 
 
 ```{r}
-
+oak_pine_df <- sfo_trees_df |>
+  filter(str_detect(species,"Oak") | str_detect(species, "Pine")) |>
+  select(species, legal_status, plant_date, latitude, longitude) |>
+  mutate(type=ifelse(str_detect(species, "Oak"), "Oak", "Pine"))
 ```
-
 
 Summary stats
 
 ```{r}
 oak_pine_count<-oak_pine_df |> 
-  group_by(legal_status,type)
+  group_by(legal_status, type) |>
   summarize(count=n())
 ```
 
@@ -90,7 +114,13 @@ oak_pine_count<-oak_pine_df |>
 Plot the locations of the trees as a scatterplot
 
 ```{r}
-
+count_plot <- ggplot(oak_pine_df, aes(x = longitude, y = latitude, color = type))+
+  geom_point()+
+  labs(x = "Longitude", y = "Latitude")+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+# axis tests 
+count_plot
 ```
 
 
@@ -100,7 +130,7 @@ Plot the locations of the trees as a scatterplot
 Why have a list of native trees in the data folder.
 
 ```{r}
-ca_native_df<-read_csv(here('data/sfo/ca_native_spp.csv'))
+ca_native_df<-read_csv(here('data/sfo_trees/ca_native_spp.csv'))
 
 # Why can I use this format instead of the usual here("data","folder","file")?
 ```
@@ -110,6 +140,10 @@ ca_native_df<-read_csv(here('data/sfo/ca_native_spp.csv'))
 
 We want to see if there was a difference in planting years between a native oak *Quercus agrifolia* and a native pine *Pinus radiata*. Wrangle the data and use an appropriate statistical test to see if there is a difference.
 
+```{r}
+natives <- oak_pine_df |>
+  
+```
 
 
 **New Function!**
@@ -121,7 +155,19 @@ lubridate::year("2022-11-16")
 ```
 
 ```{r}
-oak_pine_year_df<-????
+sfo_trees_native <- sfo_trees_df |>
+  separate(species, into=c('spp_sci', 'spp_common'), se=' :: ')|>
+  select(starts_with('spp'), 'plant_date', 'legal_status', 'longitude', 'latitude')|>
+  mutate(ca_native=(spp_sci %in% ca_native_df$scientific_name))
+```
+
+
+```{r}
+oak_pine_year_df<-sfo_trees_native |>
+  filter(spp_sci %in% c('Quercus agrifolia', 'Pinus radiata'))|>
+  mutate(plant_year=lubridate::year(plant_date))
+
+t.test(plant_year ~ spp_sci, data=oak_pine_year_df)
 ```
 
 
@@ -160,7 +206,7 @@ ggplot(data=oak_pine_sf)+
 
 **Step 2**
 
-Read in the shape file for San Fransico.
+Read in the shape file for San Francisco .
 
 ```{r}
 sfo_map <- read_sf(here("data", "sfo_map", "tl_2017_06075_roads.shp"))
